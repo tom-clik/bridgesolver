@@ -1,0 +1,18 @@
+{
+    "app":{
+        "cfengine":"none"
+    },
+    "name":"Bridge Solver",
+    "profile":"development",
+    "web":{
+        "http":{
+            "port":"8093"
+        },
+        "aliases":{
+            "/_assets":"clikpage\\_assets",
+            "/_common":"..\\clikpic\\wwwroot\\_common",
+            "/images":"clikpage\\testing\\images"
+        },
+        "welcomeFiles":"index.html"
+    }
+}

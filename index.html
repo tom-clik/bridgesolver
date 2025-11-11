@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bridge Double Dummy Solver (WASM) - Interactive</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 2rem;
+      background: #f8f9fb;
+      color: #222;
+    }
+    h1 { font-size: 1.6rem; }
+    select, button, textarea {
+      font-size: 1rem;
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #0074d9;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover { background: #005fa3; }
+    .controls {
+      margin-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-width: 600px;
+    }
+    textarea {
+      font-family: monospace;
+      width: 100%;
+      height: 6rem;
+    }
+    .table {
+      margin-top: 2rem;
+      display: grid;
+      grid-template-columns: 1fr 200px 1fr;
+      grid-template-rows: auto auto auto;
+      justify-items: center;
+      align-items: center;
+      text-align: center;
+    }
+    .hand {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      font-family: monospace;
+      background: white;
+      border-radius: 6px;
+      padding: 0.5rem;
+      min-width: 140px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+      cursor: default;
+    }
+    .hand span.suit {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.2rem;
+    }
+    .hand span.card {
+      display: inline-block;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      background: #eee;
+      cursor: pointer;
+      user-select: none;
+    }
+    .hand span.card:hover { background: #ddd; }
+    .♠, .S { color: black; }
+    .♥, .H { color: red; }
+    .♦, .D { color: red; }
+    .♣, .C { color: black; }
+    pre {
+      background: #eee;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>Bridge Double Dummy Solver (WASM) - Interactive</h1>
+  <p>Click any card to remove it. To add a card, edit the textarea and click "Render Hands".</p>
+
+  <div class="controls">
+    <label>Trump suit:
+      <select id="trump">
+        <option value="-1">No Trump</option>
+        <option value="0">♣ Clubs</option>
+        <option value="1">♥ Hearts</option>
+        <option value="2">♠ Spades</option>
+        <option value="3">♦ Diamonds</option>
+      </select>
+    </label>
+
+    <label>Declarer:
+      <select id="declarer">
+        <option value="0">North (0)</option>
+        <option value="1">East (1)</option>
+        <option value="2">South (2)</option>
+        <option value="3">West (3)</option>
+      </select>
+    </label>
+
+    <label>Leader:
+      <select id="leader">
+        <option value="0">North (0)</option>
+        <option value="1">East (1)</option>
+        <option value="2">South (2)</option>
+        <option value="3">West (3)</option>
+      </select>
+    </label>
+
+    <label>Deal input (PBN-style or lines N/E/S/W):</label>
+    <textarea id="dealInput">N:AKQJ.T98.765.432
+E:.AQJ.432.KQJT9
+S:9876.7654.KQT.A8
+W:T5432.32.AJ98.765</textarea>
+
+    <button id="parseBtn">Render Hands</button>
+    <button id="solveBtn">Solve Deal</button>
+  </div>
+
+  <div class="table">
+    <div></div>
+    <div id="north" class="hand">North</div>
+    <div></div>
+    <div id="west" class="hand">West</div>
+    <div></div>
+    <div id="east" class="hand">East</div>
+    <div></div>
+    <div id="south" class="hand">South</div>
+    <div></div>
+  </div>
+
+  <h2>Result</h2>
+  <pre id="output">Waiting...</pre>
+
+  <script type="module">
+    import init, { Solver } from "./pkg/wasm_bridge_solver.js";
+
+    const SUIT_INDEX = { 'C': 0, 'H': 1, 'S': 2, 'D': 3 };
+    const RANK_INDEX = { '2':0,'3':1,'4':2,'5':3,'6':4,'7':5,'8':6,'9':7,'T':8,'J':9,'Q':10,'K':11,'A':12 };
+    const SUIT_SYMBOLS = ['♣', '♥', '♠', '♦'];
+    const posMap = { 'N': 0, 'E': 1, 'S': 2, 'W': 3 };
+    const posNames = ['north', 'east', 'south', 'west'];
+
+    let parsedHands = null;
+
+    function parseDeal(input) {
+      const lines = input.trim().split(/\\n|;/).map(s => s.trim()).filter(Boolean);
+      const hands = [[], [], [], []];
+      for (let line of lines) {
+        const m = line.match(/^([NESW]):(.+)$/i);
+        if (!m) continue;
+        const player = posMap[m[1].toUpperCase()];
+        const suits = m[2].split(/[ .]/).filter(Boolean);
+        const suitOrder = ['S','H','D','C'];
+        for (let i = 0; i < suits.length && i < 4; i++) {
+          const cards = suits[i].toUpperCase();
+          for (let ch of cards) {
+            const rank = ch;
+            const suit = suitOrder[i];
+            const cardIdx = SUIT_INDEX[suit]*13 + RANK_INDEX[rank];
+            hands[player].push({ suit, rank, idx: cardIdx });
+          }
+        }
+      }
+      return hands;
+    }
+
+    function renderHands(hands) {
+      for (let i = 0; i < 4; i++) {
+        const el = document.getElementById(posNames[i]);
+        el.innerHTML = `<b>${posNames[i][0].toUpperCase() + posNames[i].slice(1)}</b>`;
+        const grouped = { S: [], H: [], D: [], C: [] };
+        for (let c of hands[i]) grouped[c.suit].push(c);
+        for (let suit of ['S','H','D','C']) {
+          const suitSymbol = SUIT_SYMBOLS[['C','H','S','D'].indexOf(suit)];
+          const cardsHTML = grouped[suit].map(c => `<span class="card ${suitSymbol}" data-player="${i}" data-idx="${c.idx}">${c.rank}</span>`).join(' ');
+          el.innerHTML += `<span class='suit ${suitSymbol}'>${suitSymbol} ${cardsHTML}</span>`;
+        }
+      }
+    }
+
+    function handsToFlat(hands) {
+      const arr = new Uint8Array(208);
+      for (let p = 0; p < 4; p++) {
+        for (let c of hands[p]) arr[p*52 + c.idx] = 1;
+      }
+      return arr;
+    }
+
+    document.getElementById("parseBtn").addEventListener("click", () => {
+      parsedHands = parseDeal(document.getElementById("dealInput").value);
+      renderHands(parsedHands);
+      document.getElementById("output").textContent = "Deal rendered. Click a card to remove it.";
+    });
+
+    // Remove card on click
+    document.addEventListener("click", (e) => {
+      if (!e.target.classList.contains("card")) return;
+      const player = parseInt(e.target.dataset.player);
+      const idx = parseInt(e.target.dataset.idx);
+      parsedHands[player] = parsedHands[player].filter(c => c.idx !== idx);
+      renderHands(parsedHands);
+    });
+
+    document.getElementById("solveBtn").addEventListener("click", async () => {
+      const output = document.getElementById("output");
+      output.textContent = "Loading WASM module...";
+      await init();
+
+      const solver = new Solver();
+      if (!parsedHands) parsedHands = parseDeal(document.getElementById("dealInput").value);
+      const handsFlat = handsToFlat(parsedHands);
+      const trump = parseInt(document.getElementById("trump").value);
+      const declarer = parseInt(document.getElementById("declarer").value);
+      const leader = parseInt(document.getElementById("leader").value);
+
+      output.textContent = "Solving...";
+      const start = performance.now();
+      const result = solver.solve_max_tricks(handsFlat, trump, leader, declarer);
+      const elapsed = (performance.now() - start).toFixed(1);
+
+      output.textContent = `Declarer side max tricks: ${result}\nSolved in ${elapsed} ms`;
+    });
+
+    // Auto-render on load
+    parsedHands = parseDeal(document.getElementById("dealInput").value);
+    renderHands(parsedHands);
+  </script>
+</body>
+</html>
