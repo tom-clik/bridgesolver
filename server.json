@@ -1,18 +1,25 @@
 {
-    "app":{
-        "cfengine":"none"
+    "app":
+    {
+        "cfengine": "none"
     },
-    "name":"Bridge Solver",
-    "profile":"development",
-    "web":{
-        "http":{
-            "port":"8093"
+    "name": "Bridge Solver",
+    "profile": "development",
+    "web":
+    {
+        "http":
+        {
+            "port": "8093"
         },
-        "aliases":{
-            "/_assets":"clikpage\\_assets",
-            "/_common":"..\\clikpic\\wwwroot\\_common",
-            "/images":"clikpage\\testing\\images"
+        "webroot": ".",
+        "welcomeFiles": "index.html",
+        "mimeTypes":
+        {
+            "wasm": "application/wasm",
+            "js": "application/javascript",
+            "css": "text/css",
+            "html": "text/html"
         },
-        "welcomeFiles":"index.html"
+        "allowedExt": "wasm"
     }
 }
